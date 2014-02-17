@@ -224,6 +224,202 @@ License: MIT (attached)
 
     }
  
+    /**
+    * START sara's messing around ..................................................................................
+    */
+
+    /**
+    * Create a meta box to create a more user-friendly way to enter in metadata.
+    * ALl of the following is working off of this walkthrough: 
+    * http://www.creativebloq.com/wordpress/user-friendly-custom-fields-meta-boxes-wordpress-5113004
+    */
+
+    //We create an array called $meta_box and set the array key to the relevant post type
+    $meta_box['post'] = array(
+    
+    //This is the id applied to the meta box
+    'id' => 'post-format-meta',   
+    
+    //This is the title that appears on the meta box container
+    'title' => 'Additional Fact Check Metadata',    
+    
+    //This defines the part of the page where the edit screen section should be shown
+    'context' => 'normal',    
+    
+    //This sets the priority within the context where the boxes should show
+    'priority' => 'high',
+    
+    //Here we define all the fields we want in the meta box
+    'fields' => array(
+        array(
+            'name' => 'Assertion - True / False',
+            'desc' => 'true or false',
+            'id' => 'assertion',
+            'type' => 'text',
+            'default' => ''
+        ),
+        array(
+            'name' => 'Complicated - Override',
+            'desc' => 'If you want to display Complicated, enter 1. Otherwise leave blank.',
+            'id' => 'complicated',
+            'type' => 'text',
+            'default' => ''
+        )
+        array(
+            'name' => 'URL - Source',
+            'desc' => 'URL to the fact check source',
+            'id' => 'source_url',
+            'type' => 'text',
+            'default' => ''
+        )
+        array(
+            'name' => 'Organization - Source',
+            'desc' => 'e.g. The Washington Post, Politifact',
+            'id' => 'source_org',
+            'type' => 'text',
+            'default' => ''
+        )
+        array(
+            'name' => 'Title - Source',
+            'desc' => 'Title of the fact check linked to',
+            'id' => 'post_title',
+            'type' => 'text',
+            'default' => ''
+        )
+        array(
+            'name' => 'Party of speaker',
+            'desc' => '(Optional) Democratic or Republican',
+            'id' => 'party',
+            'type' => 'text',
+            'default' => ''
+        )
+        array(
+            'name' => 'Name of speaker',
+            'desc' => '(Optional) Who originally made the claim',
+            'id' => 'speaker',
+            'type' => 'text',
+            'default' => ''
+        )
+    )
+);
+ 
+    /**
+    *The following line of code will run the functions that will actually create the Meta Box(es).
+    */
+
+    add_action('admin_menu', 'plib_add_box'); 
+
+    /**
+    * Adding the Meta Box
+    */
+
+    //Add meta boxes to post types
+    function plib_add_box() {
+    global $meta_box;
+    
+    foreach($meta_box as $post_type => $value) {
+        add_meta_box($value['id'], $value['title'], 'plib_format_box', $post_type, $value['context'], $value['priority']);
+    }
+}
+
+    /**
+    * Formatting the Meta Box
+    *This function applies the HTML formatting within the Meta Box for each input field.
+    */
+
+    //Format meta boxes
+function plib_format_box() {
+  global $meta_box, $post;
+
+  // Use nonce for verification
+  echo '<input type="hidden" name="plib_meta_box_nonce" value="', wp_create_nonce(basename(__FILE__)), '" />';
+
+  echo '<table class="form-table">';
+
+  foreach ($meta_box[$post->post_type]['fields'] as $field) {
+      // get current post meta data
+      $meta = get_post_meta($post->ID, $field['id'], true);
+
+      echo '<tr>'.
+              '<th style="width:20%"><label for="'. $field['id'] .'">'. $field['name']. '</label></th>'.
+              '<td>';
+      switch ($field['type']) {
+          case 'text':
+              echo '<input type="text" name="'. $field['id']. '" id="'. $field['id'] .'" value="'. ($meta ? $meta : $field['default']) . '" size="30" style="width:97%" />'. '<br />'. $field['desc'];
+              break;
+          case 'textarea':
+              echo '<textarea name="'. $field['id']. '" id="'. $field['id']. '" cols="60" rows="4" style="width:97%">'. ($meta ? $meta : $field['default']) . '</textarea>'. '<br />'. $field['desc'];
+              break;
+          case 'select':
+              echo '<select name="'. $field['id'] . '" id="'. $field['id'] . '">';
+              foreach ($field['options'] as $option) {
+                  echo '<option '. ( $meta == $option ? ' selected="selected"' : '' ) . '>'. $option . '</option>';
+              }
+              echo '</select>';
+              break;
+          case 'radio':
+              foreach ($field['options'] as $option) {
+                  echo '<input type="radio" name="' . $field['id'] . '" value="' . $option['value'] . '"' . ( $meta == $option['value'] ? ' checked="checked"' : '' ) . ' />' . $option['name'];
+              }
+              break;
+          case 'checkbox':
+              echo '<input type="checkbox" name="' . $field['id'] . '" id="' . $field['id'] . '"' . ( $meta ? ' checked="checked"' : '' ) . ' />';
+              break;
+      }
+      echo     '<td>'.'</tr>';
+  }
+
+  echo '</table>';
+
+}
+
+    /**
+    * Saving data from the Meta Box
+    * Finally we need to tell WordPress that the fields exist and how to save them with the Post.
+    */
+
+    // Save data from meta box
+    function plib_save_data($post_id) {
+    global $meta_box,  $post;
+    
+    //Verify nonce
+    if (!wp_verify_nonce($_POST['plib_meta_box_nonce'], basename(__FILE__))) {
+        return $post_id;
+    }
+
+    //Check autosave
+    if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) {
+        return $post_id;
+    }
+
+    //Check permissions
+    if ('page' == $_POST['post_type']) {
+        if (!current_user_can('edit_page', $post_id)) {
+            return $post_id;
+        }
+    } elseif (!current_user_can('edit_post', $post_id)) {
+        return $post_id;
+    }
+    
+    foreach ($meta_box[$post->post_type]['fields'] as $field) {
+        $old = get_post_meta($post_id, $field['id'], true);
+        $new = $_POST[$field['id']];
+        
+        if ($new && $new != $old) {
+            update_post_meta($post_id, $field['id'], $new);
+        } elseif ('' == $new && $old) {
+            delete_post_meta($post_id, $field['id'], $old);
+        }
+    }
+}
+
+add_action('save_post', 'plib_save_data');
+
+
+    /**
+    * END sara's messing around ..............................................................................
+    */
+
     /** 
      * Load a template. MVC FTW!
      * @param string $template the template to load, without extension (assumes .php). File should be in templates/ folder
